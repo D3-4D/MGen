@@ -21,7 +21,7 @@
 ```
 ## Overview
 
-![Demo](https://github.com/D3-4D/MGen/Demo/Edit.gif)
+![](https://github.com/D3-4D/MGen/blob/main/Demo/Edit.gif)
 
 This project consists of a recursive procedural maze generation library with multi-threading support written in Luau, optimized for the Roblox framework.
 
@@ -44,5 +44,6 @@ This project consists of a recursive procedural maze generation library with mul
 
 
 ## Requirements for DIRECT execution
+
 
 - Roblox Environment
