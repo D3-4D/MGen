@@ -3,7 +3,7 @@
 local function Colors(Amount:number)
 	local p = {}
 	local Rand = math.random(-2^12,2^12)/2^12
-	
+
 	for i = 0, Amount-1 do
 		local val =  math.abs(1/(Amount-i)+Rand)
 		table.insert(p, Color3.fromHSV((val>1 and val - math.floor(val)) or val, val, 1))
@@ -38,7 +38,7 @@ local ConstructSettings = {
 
 	WallWidth = .4, 								-- Width
 	WallHeight = .8, 								-- Height
-	
+
 	ThreadNodeColors = Colors(Threads),				-- Color(s)
 	ThreadNodeMaterials = {Enum.Material.Rock},		-- Material(s)
 	ThreadNodeShadowing = {false},					-- Shadow(s)
@@ -51,8 +51,8 @@ local ConstructSettings = {
 local BuildInstructs = {
 	Threads = Threads, -- Threads
 	Layout = nil, -- Current build layout (maze build)
-				  -- If blank, performs build as empty;
-				  -- Otherwise, will exclude already processed nodes (radius preservation thingy)
+	-- If blank, performs build as empty;
+	-- Otherwise, will exclude already processed nodes (radius preservation thingy)
 
 	Debugging = true, -- Debugging
 	ClyclicThreadSettings = true,
@@ -85,15 +85,22 @@ local Gen = Funcs.new()
 
 ConstructSettings.Folder = Gen:Construct(ConstructSettings) -- From empty to grid
 
-ConstructSettings.Layout = Gen:Build(OperationalRange, BuildInstructs)[1]
+ConstructSettings["Layout"] = Gen:Build(OperationalRange, BuildInstructs).Result -- gen
 
-ConstructSettings.Folder = Gen:Construct(ConstructSettings) -- From grid to gen
+Gen:Construct(ConstructSettings) -- From grid to gen
 
 local HB = Instance.new("Part")
 HB.Shape = Enum.PartType.Cylinder
 HB.Size = Vector3.new(.8, 20, 28)
+HB.CFrame = CFrame.new(HB.Position) * CFrame.Angles(
+	math.rad(0), 
+	math.rad(-90), 
+	math.rad(90)
+)
 HB.Transparency = .8
 HB.Material = Enum.Material.Neon
+HB.Anchored = true
+HB.Parent = workspace
 
 local MinX = ConstructSettings.StartingPosition.X+HB.Size.Y/2
 local MinZ = ConstructSettings.StartingPosition.Z+HB.Size.Y/2
@@ -118,13 +125,13 @@ while task.wait() do
 			end
 		end
 	end
-	
+
 	BuildInstructs.Layout = Preserve
-	
-	ConstructSettings.Layout = Gen:Build(OperationalRange, BuildInstructs)[1]
-	
+
+	ConstructSettings.Layout = Gen:Build(OperationalRange, BuildInstructs).Result
+
 	ConstructSettings.ThreadNodeColors = Colors(Threads)
 	HB.Color = Color3.new(1,0,0)
 	HB.Transparency = (ConstructSettings.PinIndicator == true and .5) or .65
-	ConstructSettings.Folder = Gen:Construct(ConstructSettings)
+	Gen:Construct(ConstructSettings)
 end

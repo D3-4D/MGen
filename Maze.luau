@@ -1,4 +1,3 @@
--- Parent: game:GetService("ServerStorage")
 local r = {}
 r.__index = r
 
@@ -339,8 +338,9 @@ function r:Build(
 	end
 	return {Result = Build, Debugging = ThreadInfo}
 end
---rewritw
+
 function r:Construct(Settings:ConstructSettings): Folder
+	local Init = Settings.Folder ~= nil
 	if not Settings then
 		Settings = self.Defaults.Construct
 	else
@@ -350,7 +350,7 @@ function r:Construct(Settings:ConstructSettings): Folder
 			end
 		end
 	end
-	
+
 	local Parent = Settings.Folder
 	
 	local Init = Parent ~= nil
