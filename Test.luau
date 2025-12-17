@@ -16,8 +16,6 @@ local Funcs = require(game:GetService("ServerStorage").MazeFuncs)
 
 local Threads = 6
 
--- Packed instructions
-
 local OperationalRange = { -- Master size
 	X = {Min = 1, Max = 65},
 	Z = {Min = 1, Max = 65},
@@ -26,12 +24,12 @@ local OperationalRange = { -- Master size
 local ConstructSettings = {
 	-- General settings
 
-	Layout = nil, -- Build application. Leave nil for visual grid
-	StartingPosition = Vector3.zero, -- Initial node build point
-	Extension = {X = 65, Z = 65}, -- Node scale {X, Z}
-	NodeArea = 2.5, -- Space between walls
-	GenerateFloor = false, -- Floored (configurations are excluded due to ease of access)
-	Folder = nil, -- Parent folder. Leave nil for directory creation
+	Layout = nil,                        -- Build application. Leave nil for visual grid
+	StartingPosition = Vector3.zero,     -- Initial node build point
+	Extension = {X = 65, Z = 65},        -- Node scale {X, Z}
+	NodeArea = 2.5,                      -- Space between walls
+	GenerateFloor = false,               -- Floored (configurations are excluded due to ease of access)
+	Folder = nil,                        -- Parent folder. Leave nil for directory creation
 
 
 	-- Wall properties (for thread individuality, repeat type in a table)
