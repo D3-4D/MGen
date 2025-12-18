@@ -45,5 +45,8 @@ This project consists of a recursive procedural maze generation library with mul
 
 ## Requirements for DIRECT execution
 
-
 - Roblox Environment
+
+## Developer note
+
+- Many issues and optimization flaws have been found. Version 4 is in production.
