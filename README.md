@@ -17,7 +17,7 @@
     - Service: Recursive maze generation module
     - Release: 12/16/2025
     - Maintainer: @Dead_S0S / D3-4D
-    - Version: 3
+    - Version: 4 ( 7% Faster than previous version! )
 ```
 ## Overview
 
@@ -32,15 +32,16 @@ This project consists of a recursive procedural maze generation library with mul
 - Memory-based instant backtracking
 - Post-regeneration path retention support
 - Configurable operational ranges
-- Custom recursion behavior (linear or randomized)  
+- Custom recursion behavior (linear or randomized)
 - Adjustable generation structuring through path preference settings
 
-- Multi-threaded generation with per-thread configuration  
+- Multi-threaded generation with per-thread configuration
+- Streaming support for live interaction
 - Shared thread backtracking support
 
-- Debugging and clocking features  
-- Optional visual construction system for debugging and inspection  
-- Automatic construction and update optimizations  
+- Debugging and clocking features
+- Optional visual construction system for debugging and inspection
+- Support for display optimizations
 
 
 ## Requirements for DIRECT execution
@@ -49,4 +50,4 @@ This project consists of a recursive procedural maze generation library with mul
 
 ## Developer note
 
-- Many issues and optimization flaws have been found. Version 4 is in production.
+- Major fixes and optimizations have been applied in V4, alongside the streaming support feature. There are still known syntax related issues to be fixed and incoming features to be implemented on V5.

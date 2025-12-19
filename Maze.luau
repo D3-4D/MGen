@@ -12,7 +12,7 @@ export type Maze = {
 				[5] - Thread: number?,
 				[6] - RetentionTag: boolean?
 			]]--
-			
+
 			boolean | (number?)
 		}
 	}
@@ -25,8 +25,10 @@ export type ThreadSetting = {
 	}?,
 	StartCoordinates: {X:number,Z:number}?,
 	LinearRecursion:boolean,
-	Sequential: boolean,
+	SequentialInitiation: boolean,
+	
 	SharedRecursion:boolean,
+	
 	Footprint:boolean,
 	RapidExecutionCap:number,
 	WallPreference: {number}?,
@@ -55,6 +57,8 @@ export type BuildSettings = {
 	Threads: number,
 	Debugging:boolean,
 	Layout: Maze?,
+	StreamFunction:(X:number, Z:number, NodeInfo:{boolean|number|nil}, Context:string)->(any),
+	CleanUp:boolean,
 	ClyclicThreadSettings:boolean,
 	ThreadSettings:{ThreadSetting}?
 }
@@ -62,45 +66,13 @@ export type BuildSettings = {
 local PathCoversion = {2, 1, 4, 3}
 
 local function Navigate(Current:{number--[[X,Z]]}, MaxX: number, MaxZ: number, MinX: number, MinZ: number)
+	local c1,c2 = Current[1], Current[2]
 	return {
-		{math.clamp(Current[1]+1, MinX, MaxX), Current[2]}; -- X+
-		{math.clamp(Current[1]-1, MinX, MaxX), Current[2]}; -- X-
-		{Current[1], math.clamp(Current[2]+1, MinZ, MaxZ)}; -- Z+
-		{Current[1], math.clamp(Current[2]-1, MinZ, MaxZ)}  -- Z-
+		c1+1<=MaxX and {c1+1, c2} or nil; -- X+
+		c1-1>=MinX and {c1-1, c2} or nil; -- X-
+		c2+1<=MaxZ and {c1, c2+1} or nil; -- Z+
+		c2-1>=MinZ and {c1, c2-1} or nil; -- Z-
 	}
-end
-
-local function CleanUp(Maze: Maze, FastExcCap: number): Maze
-	local SizeXZ = {#Maze, #Maze[1]}
-	FastExcCap = FastExcCap or 5
-
-	for X = 1, SizeXZ[1] do
-
-		if X%FastExcCap == 0 then task.wait() end
-
-		for Z = 1, SizeXZ[2] do
-			if Z%(FastExcCap*2) == 0 then task.wait() end
-			
-			for Wall, Neighbor in Navigate({X, Z}, SizeXZ[1], SizeXZ[2], 1, 1) do
-				if not Neighbor or (Neighbor[1] == X and Neighbor[2] == Z) then
-					continue -- Skip border clamp selection & (invalid neighbors)?
-				elseif  Maze[Neighbor[1]] and Maze[Neighbor[1]][Neighbor[2]] then
-					if Maze[Neighbor[1]][Neighbor[2]][6] and not Maze[X][Z][6] then
-						if not Maze[Neighbor[1]][Neighbor[2]][PathCoversion[Wall]] and Maze[X][Z][Wall] then
-							Maze[X][Z][Wall] = false
-						end
-					else
-						for i = 1, 4 do
-							if Maze[Neighbor[1]][Neighbor[2]][i] and Maze[X][Z][PathCoversion[i]] then
-								Maze[Neighbor[1]][Neighbor[2]][i] = false
-							end
-						end
-					end
-				end
-			end
-		end
-	end
-	return Maze
 end
 
 function r.new(Defaults: BuildSettings?)
@@ -110,19 +82,20 @@ function r.new(Defaults: BuildSettings?)
 				Threads = 1,
 				Layout = nil,
 				Debugging = true,
+				CleanUp = true,
 				ClyclicThreadSettings = false,
-				
+
 				ThreadSettings = {
 					{
 						LocalOperationalRange = nil,
 						StartCoordinates = nil,
 						LinearRecursion = true,
-						Sequential = false,
-						SharedRecursion = false,
-						Footprint = false,
+						SequentialInitiation = false,
+						SharedRecursion = true,
+						Footprint = true,
 						RapidExecutionCap = 30,
-						WallPreference = {1, 3},
-						PreferenceProbablity = 1,
+						WallPreference = nil,
+						PreferenceProbablity = nil,
 					},
 				}
 			},
@@ -147,7 +120,7 @@ function r.new(Defaults: BuildSettings?)
 		}
 	}
 	setmetatable(Self, r)
-	
+
 	return Self
 end
 
@@ -158,13 +131,13 @@ function r:Build(
 	},
 	BuildSettings:BuildSettings?|{}?
 ):  {
-		Result: Maze,
-		Debugging: {
-			{Timing: {Init: number, End: number?}, UnitsProcessed: {{X: number, Y: number, PreviousThread:number|nil}}}
-		}
+	Result: Maze,
+	Debugging: {
+		{Timing: {Init: number, End: number?}, UnitsProcessed: {{X: number, Y: number, PreviousThread:number|nil}}}
+	}
 	}
 	local D:boolean=false -- Default Flag
-	
+
 	if not BuildSettings then
 		D = true
 		BuildSettings = self.Defaults.Build
@@ -175,7 +148,7 @@ function r:Build(
 			end
 		end
 	end
-	
+
 	local Settings:BuildSettings = BuildSettings
 
 	if not D then
@@ -185,36 +158,41 @@ function r:Build(
 			end
 		end
 	end
-	
+
 	local ThreadSettings:{ThreadSetting} = Settings.ThreadSettings
-	
+
 	local Debugging = Settings.Debugging
 	local Layout = Settings.Layout
+	local StreamFunction = Settings.StreamFunction
 	local Threads = Settings.Threads
 	local ThreadSettCycle = Settings.ClyclicThreadSettings
-	
+
 	local ThreadJobs = {}
 	local Build = {}
-	
+
 	local Init = (Debugging and os.clock())
-	
+
 	for X = OperationalRange.X.Min, OperationalRange.X.Max do
 		Build[X] = Build[X] or {}
 		for Z = OperationalRange.Z.Min, OperationalRange.Z.Max do
-			Build[X][Z] = (Layout and Layout[X] and Layout[X][Z]) or {true, true, true, true}
+			local l = Layout and Layout[X]
+			Build[X][Z] = (l and l[Z]) or {true,true,true,true}
 		end
 	end
 
 	if Debugging then
 		local t = os.clock() - Init
-		print("Finished template format in "..string.split(t,".")[1].."."..string.split(t, ".")[2]:sub(1, 2).." seconds.")
+		print("Finished template format in "..string.split(t,".")[1].."."..string.split(t, ".")[2]:sub(1, 3).." seconds.")
 	end
 
 	local GlobalRecur = {}
 	local ThreadInfo = {}
 
+	local RunningThreads = 0
+
 	for Thread = 1, Threads do
 		ThreadJobs[Thread] = true
+		RunningThreads += 1
 		ThreadInfo[Thread] = Debugging and {
 			Timing = {
 				Init = os.clock(),
@@ -227,45 +205,50 @@ function r:Build(
 			function()
 				local CurrentSettings:ThreadSetting
 				if not ThreadSettings[Thread] then
-					CurrentSettings = (ThreadSettCycle and ThreadSettings[math.clamp(((Thread+1)%(#ThreadSettings))+1, 1, #ThreadSettings)]) or self.Defaults.Build.ThreadSettings[1]
+					CurrentSettings = ThreadSettCycle and (ThreadSettings[Thread%Threads == 0 and Threads or Thread%Threads]) or self.Defaults.Build.ThreadSettings[1]
 				else
 					CurrentSettings = ThreadSettings[Thread]
 				end
-				
-				local LocalRecur = (CurrentSettings["SharedRecursion"] and GlobalRecur) or {}
 
-				if Thread ~= 1 and CurrentSettings["Sequential"] and ThreadJobs[Thread-1] then
+				local LocalRecur = (CurrentSettings["SharedRecursion"] and GlobalRecur) or {}
+				local CurrOperationalRange = CurrentSettings.LocalOperationalRange or OperationalRange
+
+				if Thread ~= 1 and CurrentSettings["SequentialInitiation"] and ThreadJobs[Thread-1] then
 					if Debugging then
 						warn("Thread "..Thread.." delayed. Awaiting for thread "..(Thread-1).."...")
 					end
 					repeat task.wait() until not ThreadJobs[Thread-1]
 				end
 
-				local MinX, MaxX = OperationalRange.X.Min,OperationalRange.X.Max
-				local MinZ, MaxZ = OperationalRange.Z.Min,OperationalRange.Z.Max
+				local MinX, MaxX = CurrOperationalRange.X.Min,CurrOperationalRange.X.Max
+				local MinZ, MaxZ = CurrOperationalRange.Z.Min,CurrOperationalRange.Z.Max
 
-				local CurrPoint = CurrentSettings["StartCoordinates"] or {math.random(MinX, MaxX), math.random(MinZ, MaxZ)}
+				local CurrPoint = CurrentSettings["StartCoordinates"]
+				if not CurrPoint then
+					for _ = 1, 10 do
+						CurrPoint = {math.random(MinX, MaxX), math.random(MinZ, MaxZ)}
+						local L = Layout and Layout[1] or {}
+						if not L[2] then
+							break
+						end
+					end
+				end
 				local LinRecur = CurrentSettings["LinearRecursion"]
 
 				local RecThread = CurrentSettings["Footprint"]
 				local ExDlay = CurrentSettings["RapidExecutionCap"] or 20
 
 				local PathPrefChnc = CurrentSettings["PreferenceProbablity"]
+				local CleanUp = Settings["CleanUp"]
 				local PathPrefConf = CurrentSettings["WallPreference"]
 
 				if Debugging then
 					print("Thread "..Thread.." began processing.")
 				end
-				
+
 				local ThreadInit = (Debugging and os.clock())
 
 				local Loop = true
-
-				table.insert(LocalRecur, CurrPoint)
-				
-				if RecThread then
-					Build[CurrPoint[1] ][CurrPoint[2] ][5] = Thread
-				end
 
 				local Cells = 1
 				while Loop do
@@ -274,73 +257,186 @@ function r:Build(
 							Loop = nil
 							break
 						end
-						
+
 						local Valid = {}
-						for idx, obj in Navigate(CurrPoint, MaxX, MaxZ, MinX, MinZ) do
-							if not table.find(Build[obj[1]][obj[2]], false) then
-								table.insert(Valid, {idx, obj})
+						local Invalid = CleanUp and {}
+						
+						if RecThread then
+							Build[CurrPoint[1]][CurrPoint[2]][5] = Thread
+						end
+						
+						local Sur = Navigate(CurrPoint, MaxX, MaxZ, MinX, MinZ)
+						for Idx, Obj in Sur do
+							local b = Build[Obj[1]][Obj[2]]
+							-- to optimize footprint heavy usage implement:
+							-- not b[5] and (b[1] and b[2] and b[3] and b[4])
+							
+							table.insert((b[1] and b[2] and b[3] and b[4] and not b[6]) and Valid or (CleanUp and Invalid or {}), {Idx, Obj[1], Obj[2]})
+						end
+						
+						if Valid[2] then
+							for i = 1, #Valid do
+								local rand = math.random(1,#Valid)
+								Valid[i],Valid[rand] = Valid[rand],Valid[i]
 							end
 						end
-
+						
+						if CleanUp then
+							for _,Obj in Invalid do
+								if not Obj[6] then
+									local Wall = Obj[1]
+									if Build[Obj[2]][Obj[3]][PathCoversion[Wall]] and Build[CurrPoint[1]][CurrPoint[2]][Wall] then
+										Build[CurrPoint[1]][CurrPoint[2]][Wall] = false
+										if StreamFunction then
+											StreamFunction({{CurrPoint[1], CurrPoint[2], Build[CurrPoint[1]][CurrPoint[2]]}}, "CleanUp")
+										end
+									end
+								end
+							end
+						end
+						
 						if #Valid == 0 then
-							local sw = (LinRecur and #LocalRecur) or math.random(1, #LocalRecur)
+							local sw = LinRecur and #LocalRecur or math.random(1, #LocalRecur)
+							
 							CurrPoint = LocalRecur[sw]
 							table.remove(LocalRecur, sw)
 							continue
 						elseif #Valid > 1 then
 							table.insert(LocalRecur, CurrPoint)
 						end
-
-						local Chosen = Valid[math.random(1, #Valid)]
-
-						if PathPrefConf and table.find(PathPrefConf, Chosen[1]) and math.random(1, PathPrefChnc) == 1 then
-							local F = nil
-							for _, v in Valid do
-								if not table.find(PathPrefConf, v[1]) then
-									F = v
-									break
+						
+						local c,cx,cz = unpack(Valid[not Valid[2] and 1 or math.random(1, #Valid)])
+						local Dice = PathPrefConf and (PathPrefChnc == 1 or math.random(1, PathPrefChnc) == 1) or nil
+						if Dice ~= nil then
+							if Dice and (c~=PathPrefConf[1] and c~=PathPrefConf[2] and c~=PathPrefConf[3] and c~=PathPrefConf[4]) then
+								for _, v in Valid do
+									local ch = v[1]
+									if ch == c then
+										continue
+									end
+									if (ch==PathPrefConf[1] or ch==PathPrefConf[2] or ch==PathPrefConf[3] or ch==PathPrefConf[4]) then
+										c,cx,cz = v[1],v[2],v[3]
+										break
+									end
+								end
+							elseif not Dice and (c==PathPrefConf[1] or c==PathPrefConf[2] or c==PathPrefConf[3] or c==PathPrefConf[4]) then 
+								for _, v in Valid do
+									local ch = v[1]
+									if ch == c then
+										continue
+									end
+									if (ch~=PathPrefConf[1] and ch~=PathPrefConf[2] and ch~=PathPrefConf[3] and ch~=PathPrefConf[4]) then
+										c,cx,cz = v[1],v[2],v[3]
+										break
+									end
 								end
 							end
-							Chosen = F or Chosen
 						end
-						Build[CurrPoint[1]][CurrPoint[2]][Chosen[1]] = false
-						Build[Chosen[2][1]][Chosen[2][2]][PathCoversion[Chosen[1]]] = false
 						
+						Build[CurrPoint[1]][CurrPoint[2]][c] = false
+						Build[cx][cz][PathCoversion[c]] = false
+						if StreamFunction then
+							StreamFunction({{
+								CurrPoint[1], CurrPoint[2], Build[CurrPoint[1]][CurrPoint[2]]
+							},
+							{
+								cx, cz, Build[cx][cz]
+							}}, "Main")
+						end
+
 						if Debugging then
-							ThreadInfo[Thread]["UnitsProcessed"][#ThreadInfo[Thread]["UnitsProcessed"]+1] = {Chosen[2][1], Chosen[2][2], Build[Chosen[2][1]][Chosen[2][2]][5]}
+							ThreadInfo[Thread]["UnitsProcessed"][#ThreadInfo[Thread]["UnitsProcessed"]+1] = {cx, cz, Build[cx][cz][5]}
 						end
-						
-						if RecThread then
-							Build[Chosen[2][1]][Chosen[2][2]][5] = Thread
-						end
-						CurrPoint = Chosen[2]
+
+						CurrPoint = {cx,cz}
 						Cells += 1
 					end
 					task.wait()
 				end
 
-				ThreadJobs[Thread] = false
+				if RunningThreads == 1 then
+					for X,_ in Settings["Layout"] or {} do
+						for Z,_ in Settings["Layout"][X] do
+							local Valid = {}
+							for Idx, Obj in Navigate({X,Z}, OperationalRange.X.Max, OperationalRange.Z.Max, OperationalRange.X.Min, OperationalRange.Z.Min) do
+								if not Build[Obj[1]][Obj[2]][6] and Build[Obj[1]][Obj[2]][PathCoversion[Idx]] and not Build[X][Z][Idx] then
+									table.insert(Valid, {Idx,Obj})
+								end
+							end
+							
+							if not Valid[1] then continue end
+							
+							if Valid[2] then
+								for i = 1, #Valid do
+									local rand = math.random(1,#Valid)
+									Valid[i],Valid[rand] = Valid[rand],Valid[i]
+								end
+							end
+
+							local Chosen = 1
+							local Choosing = 1
+							
+							while true do
+								local Choice = Valid[Choosing]
+								if not Choice then
+									break
+								end
+								local Idx = PathCoversion[Choice[1]]
+								
+								local T = Build[Choice[2][1]][Choice[2][2]][5]
+								local AppliedSettings:ThreadSetting = ThreadSettings[T or 0]
+
+								if not AppliedSettings then
+									if not ThreadSettCycle then
+										AppliedSettings = self.Defaults.Build.ThreadSettings
+									elseif T then
+										AppliedSettings = ThreadSettings[T%Threads == 0 and Threads or T%Threads] or self.Defaults.Build.ThreadSettings
+									else
+										AppliedSettings = self.Defaults.Build.ThreadSettings
+									end
+								end
+								
+								local WP = AppliedSettings.WallPreference
+								if WP or (AppliedSettings.PreferenceProbablity == 1 and (WP[1] ~= Idx and WP[2] ~= Idx and WP[3] ~= Idx and WP[4] ~= Idx) ) then
+									Choosing += 1
+								else
+									Chosen = Choosing
+									break
+								end
+							end
+							
+							Chosen = Valid[Chosen]
+							
+							Build[Chosen[2][1]][Chosen[2][2]][PathCoversion[Chosen[1]]] = false
+							if StreamFunction then
+								StreamFunction({{Chosen[2][1], Chosen[2][2], Build[Chosen[2][1]][Chosen[2][2]]}}, "Restoration")
+							end
+						end
+					end
+				end
+
 				if Debugging then
 					ThreadInfo[Thread]["Timing"]["End"] = os.clock()
-					
 					local t = ThreadInfo[Thread]["Timing"]["End"]-ThreadInit
-					print("Thread "..Thread.." finished processing in "..string.split(t, ".")[1].."."..string.split(t, ".")[2]:sub(1, 2).." seconds with "..Cells.." nodes built.")
+					print("Thread "..Thread.." finished processing in "..string.split(t, ".")[1].."."..string.split(t, ".")[2]:sub(1, 3).." seconds with "..Cells.." nodes built.")
 				end
+
+				ThreadJobs[Thread] = false
+				RunningThreads -= 1
 			end
 		)
 	end
 
-	repeat task.wait() until not table.find(ThreadJobs, true)
-	Build = CleanUp(Build, math.ceil(math.clamp((OperationalRange.X.Max+OperationalRange.Z.Max)/4, 30, 250)))
+	repeat task.wait() until RunningThreads == 0
+	--Build = CleanUp(Build, math.ceil(math.clamp((OperationalRange.X.Max+OperationalRange.Z.Max)/4, 30, 250)))
 	if Debugging then
 		local t = os.clock()-Init
-		print("Finished build. ("..string.split(t, ".")[1].."."..string.split(t, ".")[2]:sub(1, 2).."s)\n")
+		print("Finished build. ("..string.split(t, ".")[1].."."..string.split(t, ".")[2]:sub(1, 3).."s)\n")
 	end
 	return {Result = Build, Debugging = ThreadInfo}
 end
 
 function r:Construct(Settings:ConstructSettings): Folder
-	local Init = Settings.Folder ~= nil
 	if not Settings then
 		Settings = self.Defaults.Construct
 	else
@@ -352,15 +448,15 @@ function r:Construct(Settings:ConstructSettings): Folder
 	end
 
 	local Parent = Settings.Folder
-	
+
 	local Init = Parent ~= nil
 	Parent = Parent or Instance.new("Folder")
-	
+
 	local BApp = Settings.Layout
 	local Floor = Settings.GenerateFloor
 	local NSepD = Settings.NodeArea
-	local NS = Settings.Extension
 	local BP = Settings.StartingPosition
+	local NS = Settings.Extension
 	local Width = Settings.WallWidth
 	local Height = Settings.WallHeight
 	local Shadow = Settings.ThreadNodeShadowing
@@ -376,11 +472,6 @@ function r:Construct(Settings:ConstructSettings): Folder
 	end
 	--
 
-	if not BApp and Init then
-		Parent:Destroy()
-		Parent = Instance.new("Folder")
-	end
-
 	if Floor and (not Init or (Init and not Parent:FindFirstChild("Floor"))) then
 		local F = Instance.new("Part")
 		F.Name = "Floor"
@@ -390,12 +481,23 @@ function r:Construct(Settings:ConstructSettings): Folder
 		F.Position = Vector3.new(BP.X*2+(NS.X*NSepD)/2+NSepD/2, BP.Y+Height/2, BP.Z+(NS.Z*NSepD)/2+NSepD/2)
 		F.Parent = Parent
 	end
-
-	for X = 1, NS.X do
-		for Z = 1, NS.Z do
+	if not BApp then
+		BApp = {}
+		for X = 1, NS.X do
+			BApp[X] = BApp[X] or {}
+			for Z = 1, NS.Z do
+				BApp[X][Z] = {true,true,true,true}
+			end
+		end
+	end
+	for X,_ in BApp do
+		for Z,_ in BApp[X] do
 			if Z%20 == 0 and X%2 == 0 then task.wait() end
-			local Unit = (Init and BApp and Parent[X.."."..Z])
+			local Unit = (Init and BApp and Parent:FindFirstChild(X.."."..Z))
 			if not Unit then
+				if Init then
+					continue
+				end
 				Unit = Instance.new("Folder")
 				Unit.Name = X.."."..Z
 			end
@@ -417,7 +519,7 @@ function r:Construct(Settings:ConstructSettings): Folder
 					Indic.Shape = Enum.PartType.Cylinder
 					Indic.Material = Enum.Material.Neon
 					Indic.Position = Vector3.new(t1, BP.Y+Height/2+.45, t3)
-					Indic.Transparency = .4
+					Indic.Transparency = .7
 					Indic.Rotation = Vector3.new(0,0,90)
 					Indic.Parent = Unit
 					Indic.Name = "Pin"

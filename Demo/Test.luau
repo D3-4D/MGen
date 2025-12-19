@@ -54,14 +54,16 @@ local BuildInstructs = {
 	-- If blank, performs build as empty;
 	-- Otherwise, will exclude already processed nodes (radius preservation thingy)
 
-	Debugging = true, -- Debugging
-	ClyclicThreadSettings = true,
+	Debugging = true, 				-- Debugging
+	CleanUp = true,					-- Removes duplicate walls
+	ClyclicThreadSettings = true,	-- Thread settings are applied in a cyclic manner, instead of deffaulting to "Defaults" when not specified.
+	StreamFunction = nil,			-- Executes given function with altered fields. Parameters: X, Z, Node, Context("Main", "CleanUp", "Restoration"- For layout rewrite fixes)
 	ThreadSettings = {				-- Threads settings (Leave nil for default settings)
 		{ 								-- Thread setting (Leave values nil for defaults)
 			LocalOperationalRange = nil,	-- Local size (master size format, will malfunction paired with active SRA)
 			StartCoordinates = nil,			-- Starting point (leave nil for random)
 			LinearRecursion = true,			-- Linear recursion
-			Sequential = false,				-- Sequenced thread (executes after last thread is finished; doesn't work on first thread)
+			SequentialInitiation = false,	-- Sequenced thread (executes after last thread is finished; doesn't work on first thread)
 			SharedRecursion = true, 		-- Shared recursion access (SRA)
 			Footprint = true,				-- Record thread action in nodes (for exhibition or examining)
 			RapidExecutionCap = 30, 		-- Rapid execution cap
@@ -83,15 +85,19 @@ local BuildInstructs = {
 
 local Gen = Funcs.new()
 
-ConstructSettings.Folder = Gen:Construct(ConstructSettings) -- From empty to grid
+Gen:Construct(ConstructSettings) -- From empty to grid
+
+ConstructSettings.Folder = workspace:FindFirstChildOfClass("Folder")
 
 ConstructSettings["Layout"] = Gen:Build(OperationalRange, BuildInstructs).Result -- gen
 
 Gen:Construct(ConstructSettings) -- From grid to gen
 
+local Radius = 25
+
 local HB = Instance.new("Part")
 HB.Shape = Enum.PartType.Cylinder
-HB.Size = Vector3.new(.8, 20, 28)
+HB.Size = Vector3.new(.8, Radius, Radius/.9)
 HB.CFrame = CFrame.new(HB.Position) * CFrame.Angles(
 	math.rad(0), 
 	math.rad(-90), 
@@ -102,10 +108,14 @@ HB.Material = Enum.Material.Neon
 HB.Anchored = true
 HB.Parent = workspace
 
+
+local WorldX = ConstructSettings.Extension.X*ConstructSettings.NodeArea
+local WorldZ = ConstructSettings.Extension.Z*ConstructSettings.NodeArea
+
 local MinX = ConstructSettings.StartingPosition.X+HB.Size.Y/2
 local MinZ = ConstructSettings.StartingPosition.Z+HB.Size.Y/2
-local MaxX = ConstructSettings.StartingPosition.X+ConstructSettings.Extension.X*ConstructSettings.NodeArea-HB.Size.Y/2
-local MaxZ = ConstructSettings.StartingPosition.Z+ConstructSettings.Extension.Z*ConstructSettings.NodeArea-HB.Size.Y/2
+local MaxX = ConstructSettings.StartingPosition.X+WorldX-HB.Size.Y/2
+local MaxZ = ConstructSettings.StartingPosition.Z+WorldZ-HB.Size.Y/2
 
 while task.wait() do
 	ConstructSettings.PinIndicator = math.random(1,2)==1
@@ -113,14 +123,29 @@ while task.wait() do
 	HB.Color = Color3.new(.8,.8,.8)
 	HB.Position = Vector3.new(math.random(MinX,MaxX), ConstructSettings.StartingPosition.Y+ConstructSettings.WallHeight/2, math.random(MinZ,MaxZ))
 
-	for _, obj in HB:GetTouchingParts() do
-		if obj.Parent:IsA("Folder") and obj.Name ~= "Floor" then
-			local XY = string.split(obj.Parent.Name, ".")
-			Preserve[tonumber(XY[1])] = Preserve[tonumber(XY[1])] or {}
-			Preserve[tonumber(XY[1])][tonumber(XY[2])] = {false,false,false,false,nil,true}
-			for _, wall in obj.Parent:GetChildren() do
-				if wall.Name ~= "Pin" then
-					Preserve[tonumber(XY[1])][tonumber(XY[2])][tonumber(wall.Name)] = true
+	local XRangePos = math.ceil((HB.Position.X+Radius/2)/ConstructSettings.NodeArea)
+	local XRangeNeg = math.floor((HB.Position.X-Radius/2)/ConstructSettings.NodeArea)
+	local ZRangePos = math.ceil((HB.Position.Z+Radius/2)/ConstructSettings.NodeArea)
+	local ZRangeNeg = math.floor((HB.Position.Z-Radius/2)/ConstructSettings.NodeArea)
+
+	local CenterX = math.ceil(XRangePos+XRangeNeg)/2
+	local CenterZ = math.ceil(ZRangePos+ZRangeNeg)/2
+
+	local Dist = math.floor(((XRangePos-XRangeNeg)/2+(ZRangePos-ZRangeNeg)/2)/2)
+
+	for X = XRangeNeg, XRangePos do
+		for Z = ZRangeNeg, ZRangePos do	
+			if (X-CenterX)^2+(Z-CenterZ)^2<=Dist^2 then
+				local Cell = workspace:FindFirstChildOfClass("Folder"):FindFirstChild(X.."."..Z)
+				if Cell then
+					Preserve[X] = Preserve[X] or {}
+					Preserve[X][Z] = {false,false,false,false,nil,true}
+
+					for _, Wall in Cell:GetChildren() do
+						if Wall.Name ~= "Pin" then
+							Preserve[X][Z][tonumber(Wall.Name)] = true
+						end
+					end
 				end
 			end
 		end
