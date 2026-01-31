@@ -51,3 +51,11 @@ This project consists of a recursive procedural maze generation library with mul
 ## Developer note
 
 - Major fixes and optimizations have been applied in V4, alongside the streaming support feature. There are still known syntax related issues to be fixed and incoming features to be implemented on V5.
+
+### Future patch list
+
+- Implementing enforcement settings for inter-thread merge operations
+- Refactoring the object-oriented process architecture to improve flexibility
+- Enhancing streaming capabilities
+- Resolving multiple identified logical and performance issues
+- Correcting and restructuring the lexical architecture of construction mode
